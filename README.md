@@ -1,20 +1,32 @@
+## USB2MDIO_PY
+
+TI has this interface for configuring PHYs via USB on their evaluation boards.
+However, the tool is only made available for Windows, and it doesn't offer a good UX.
+Therefore I decided (needed) to write a small tool to substitute it and expand it a tad.
+
+## How to use
 
 Connect to serial invoking the script like so (baudrate = 9600):
-    python3 usb2mdio.py <com_port>
+    ```python3 usb2mdio.py <com_port>```
+    or, make the file executable (chmod +x usb2mdio.py) and use
+    ```./usb2mdio.py <com_port>```
 
 After connected:
 Configure PHY access:
+    Show current config:
+    ```config```
     PHY address chosen with:
     ```config phy <phy_address>```
     Extended register mode chosen with:
     ```config ext <yes/no, y/n, Y/N, YES/NO>```
 
-Write register with:
+Write register:
     ```<reg> <value>```
-Formats: 23 (decimal) or 0x17 (hexadecimal) or b00010111 (binary)
+    Only HEX values for now...
 
 Read register with:
     ```<reg>```
+    Only HEX values for now...
 
 Show board verbose:
     ```info```
@@ -38,7 +50,7 @@ Execute a script in TIs format with:
     end
     ```
 
-Execute a file in usb2mdio_py format with (lets us batch writes to many PHYs):
+Execute a file in usb2mdio_py format with (lets us batch writes to many PHYs) (WIP):
     ```script <path>```
 
     Syntax for usb2mdio_py script:

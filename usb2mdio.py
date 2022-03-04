@@ -1,8 +1,26 @@
 #!/usr/bin/env python3
 
-# TODO
-# Check why read broke
-# upload it to git
+# MIT License
+
+# Copyright (c) 2022 Wesley Becker
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
 # Get arguments from outside:
 #    connect [port] <speed=9600>
@@ -24,28 +42,87 @@
 
 import sys
 import serial
+import re
 
 
 help_str = """
-Connect to serial invoking the script like so:
-python3 usb2mdio.py [port] <speed=9600>
+Connect to serial invoking the script like so (baudrate = 9600):
+    python3 usb2mdio.py <com_port>
+or, make the file executable (chmod +x usb2mdio.py) and use
+    ./usb2mdio.py <com_port>
 
 After connected:
-Set PHY address with:
-phy <phy_address>
+Configure PHY access:
+    Show current config:
+        config
+    PHY address chosen with:
+        config phy <phy_address>
+    Extended register mode chosen with:
+        config ext <yes/no, y/n, Y/N, YES/NO>
 
-Write register with (WIP):
-<reg> <value>
-Formats: 23 (decimal) or 0x17 (hexadecimal) or b00010111 (binary)
+Write register:
+    <reg> <value>
+Only HEX values for now...
 
-Read register with (WIP):
-<reg>
+Read register with:
+    <reg>
+Only HEX values for now...
+
+Show board verbose:
+    info
 
 Dump registers with (WIP):
-dump <start_reg> <end_reg>
+    dump <start_reg> <end_reg>
 
-Execute a file in TIs format with (WIP):
-file <address>
+Execute a script in TIs format with:
+    script_ti <path>
+
+    Syntax for TI script:
+    
+    begin
+
+    0000      // comment, read BMCR (Basic Mode Control Register)
+    0001      // read BMSR (Basic Mode Status Register)
+    0002      // read PHYIDR1 (should read 0x2000)
+    0003      // read PHYIDR2 (should read 0xA270)
+    0602 0003 // write 0x0003 to reg 0x0602
+
+    end
+    
+
+Execute a file in usb2mdio_py format with (lets us batch writes to many PHYs) (WIP):
+    script <path>
+
+    Syntax for usb2mdio_py script:
+    
+    01   // this is a comment, choose to PHY 01
+    /my_path/ti_script_1.txt
+    /my_path/ti_script_2.txt
+    
+    02   // choose to PHY 01
+    /my_path/ti_script_3.txt
+    
+
+TI UART Protocol:
+
+In pure ASCII digits:
+    Send:
+    
+        <PP><AAAA>[VVVV]<X><'/'>
+        P: PHY Address digit
+        A: Register Address digit
+        V: Register Value digit
+        X: Extended register:
+            '*': yes
+            '=': no
+        '/': Delimiter char - End of request packet marker
+    
+    Receive:
+    
+        <VVVV><0x0a>
+        V: Register Value digit
+        0x0a: Delimiter char - End of reply packet
+    
 """
 
 # ---------- Function definitions ----------
@@ -67,7 +144,7 @@ def ReadBackReg(addr):
     if(pkt_reply[4] == 0x0a):
         data_str = pkt_reply[0:4].decode('utf-8')
         if(data_str):
-            print("Reg 0x", f'{addr:04x}', ": 0x", data_str, sep='')
+            print('0x', data_str, sep='')
             #PrintRaw(data_str)
             #data = int(pkt_reply[0:4], 16)
         else:
@@ -89,6 +166,7 @@ def WriteReg(com_port, phy_addr, addr, value, ext):
     com_port.write(pkt_request)
 
     # read back value and print it
+    print("wr reg 0x", f'{addr:04x}', ": ", end='')
     ReadBackReg(addr)
 
 def ReadReg(com_port, phy_addr, addr, ext):
@@ -105,6 +183,7 @@ def ReadReg(com_port, phy_addr, addr, ext):
     # write it
     com_port.write(pkt_request)
 
+    print("rd reg 0x", f'{addr:04x}', ": ", end='')
     ReadBackReg(addr)
 
 def ReadCleanLine(file):
@@ -115,7 +194,60 @@ def ReadCleanLine(file):
 
     return cmd
 
+def RwRegs(cmd, len_cmd):
+    # Get ADDR
+    try:
+        addr = int(cmd[0], 16)
+    except ValueError:
+        print("Invalid command...")
+        return
+
+    # Get VALUE (if any)
+    if(len_cmd == 2):
+        try:
+            value = int(cmd[1], 16)
+            WriteReg(com_port, phy_addr, addr, value, ext)
+        except ValueError:
+            print("Invalid value...")
+            return
+    elif(len_cmd == 1):
+        ReadReg(com_port, phy_addr, addr, ext)
+    else:
+        print('Wrong number of args...')
+
 def ExecScriptTi(file):   # file: file handler of the opened file
+
+    bad_fmt_str = 'Bad file format. '
+
+    conts = file.read()
+    conts = re.split('\n|\r|\n\r|\r\n', conts)
+
+    cmds = []
+
+    for i in range(0,len(conts)):
+        temp = conts[i].split('//',1)[0]
+        if(temp != ''):
+            cmds.append(temp)
+
+
+    if('begin' in cmds[:1] and 'end' in cmds[-1:]):
+        # All good, treat commands
+        
+        # strip 'begin' and 'end'
+        del cmds[:1]
+        del cmds[-1:]
+
+        for cmd in cmds:
+            cmd = cmd.split()
+            len_cmd = len(usr_data)
+            RwRegs(cmd, len_cmd)
+
+    else:
+        # Wrong format, abort
+        print(bad_fmt_str)
+        return
+
+def ExecScriptTiNope(file):   # file: file handler of the opened file
 
     bad_fmt_str = 'Bad file format. '
 
@@ -210,7 +342,7 @@ elif(len(sys.argv)==2):
                 continue
         elif(usr_data[0] == "script_ti"):
             path = usr_data[1]
-            print("read file (WIP):" + path )
+            print("Reading file:" + path )
 
             file = open(path, 'r')
             ExecScriptTi(file)
@@ -260,24 +392,7 @@ elif(len(sys.argv)==2):
         elif(usr_data[0] in ("help", "--help", "h", "-h", "?")):
             print(help_str)
 
-        # ---------- W/R Registers ----------
-        else:   # no text, then numbers
-            # Get ADDR
-            try:
-                addr = int(usr_data[0], 16)
-            except ValueError:
-                print("Invalid command...")
-                continue
-
-            # Get VALUE (if any)
-            if(len_usr_data == 2):
-                try:
-                    value = int(usr_data[1], 16)
-                    WriteReg(com_port, phy_addr, addr, value, ext)
-                except ValueError:
-                    print("Invalid value...")
-                    continue
-            elif(len_usr_data == 1):
-                ReadReg(com_port, phy_addr, addr, ext)
-            else:
-                print('Wrong number of args...')
+        # ---------- R/W Registers ----------
+        else:
+            RwRegs(usr_data, len_usr_data)
+            

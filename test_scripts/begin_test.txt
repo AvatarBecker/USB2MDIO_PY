@@ -1,0 +1,6 @@
+begin
+
+0009 0000 // write 0x0003 to reg 0x0602, clear 1Gpbs advert
+0000 1340 // restarts Autonegotiation
+
+end
