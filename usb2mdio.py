@@ -22,13 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Ideas/TODO:
-# Use files for verbose dump of registers: represent as class/structure like Basic_Control_Reg.Master_!Slave
-#     Maybe we could use the format/code from Unix drivers...?
-#     Maybe the same as for C?
-# 0. Accept commands and parse them (COM connect)
-# 1. COM connect and RW COM port
-# 2. Get USB2MDIO sequences for write/read
 
 import sys
 import serial
@@ -36,12 +29,15 @@ import re
 
 
 help_str = """
-Connect to serial invoking the script like so (baudrate = 9600):
-    python3 usb2mdio.py <com_port>
-or, make the file executable (chmod +x usb2mdio.py) and use
-    ./usb2mdio.py <com_port>
+Usage: python3 usb2mdio.py <com_port> [script_file]
 
-After connected:
+A python alternative to TI's USB2MDIO tool.
+
+'script_file' can be in TI's format of USB2MDIO_PY's extended format.
+Check out the syntax here: https://github.com/AvatarBecker/USB2MDIO_PY
+
+If no script is passed, a CLI opens, where the following commands are possible:
+
 Configure PHY access:
     Show current config:
         config
@@ -51,12 +47,10 @@ Configure PHY access:
         config ext <yes/no, y/n, Y/N, YES/NO>
 
 Write register:
-    <reg> <value>
-Only HEX values for now...
+    <reg> <value>   #Only HEX values without '0x' for now, e.g. ff
 
 Read register with:
-    <reg>
-Only HEX values for now...
+    <reg>           #Only HEX values without '0x' for now, e.g. ff
 
 Show board verbose:
     info
@@ -67,13 +61,19 @@ Dump registers with (WIP):
 Execute a script (either in TI's of usb2mdio_py's own format) with:
     script <path>
 
-For more information check https://github.com/AvatarBecker/USB2MDIO_PY
+Help:
+    <help, --help, h, -h, ?>
+
+Quit:
+    <exit, exit(), quit, quit(), q>
+
+For more documentation check https://github.com/AvatarBecker/USB2MDIO_PY
 """
 
 # ---------- Function definitions ----------
 
 # TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
-phy_addr = 0x01
+phy_addr = 1   # this is a decimal value
 ext = '*'  # extended registers. Yes: '*', No: '='
 ext_dict = {
     '*': 'yes',
@@ -88,6 +88,7 @@ def GetFirstString(str_list):
     else:
         return ''
 
+# Helper function for debug
 def PrintRaw(str):
     for char in str:
         print(hex(ord(char)), end=' ')
@@ -112,7 +113,7 @@ def WriteReg(com_port, phy_addr, addr, value, ext):
     #com_port.reset_input_buffer() # too slow
 
     # assemble COM message
-    pkt_request = f'{phy_addr:02x}{addr:04x}{value:04x}'+ext+'/'
+    pkt_request = f'{phy_addr:02d}{addr:04x}{value:04x}'+ext+'/'
     #print(pkt_request+': ', end='')
     #PrintRaw(pkt_request)
     pkt_request = pkt_request.encode('utf-8')
@@ -130,7 +131,7 @@ def ReadReg(com_port, phy_addr, addr, ext):
     #com_port.reset_input_buffer() # too slow
 
     # assemble COM message
-    pkt_request = f'{phy_addr:02x}{addr:04x}'+ext+'/'
+    pkt_request = f'{phy_addr:02d}{addr:04x}'+ext+'/'
     #print(pkt_request+': ', end='')
     #PrintRaw(pkt_request)
     pkt_request = pkt_request.encode('utf-8')
@@ -141,6 +142,7 @@ def ReadReg(com_port, phy_addr, addr, ext):
     print("rd reg 0x", f'{addr:04x}', ": ", sep='', end='')
     ReadBackReg(addr)
 
+# Unused. I'll leave it here just for future reference of a neat solution
 def ReadCleanLine(file):
     line = file.readline()
     line = GetFirstString(line.split('//',1))
@@ -179,8 +181,8 @@ def Config(usr_data, len_usr_data):
     if(len_usr_data == 3):
         if(usr_data[1] == "phy"):
             try:
-                phy_addr = int(usr_data[2], 16)
-                print("PHY addr = 0x"+f'{phy_addr:02x}')
+                phy_addr = int(usr_data[2], 10)
+                print("PHY addr = "+f'{phy_addr:02d}')
             except ValueError:
                 print("Invalid PHY address...")
                 return
@@ -195,10 +197,10 @@ def Config(usr_data, len_usr_data):
                 print("Invalid Ext mode...")
                 return
     else:
-        print("MDIO PHY addr = 0x"+f'{phy_addr:02x}')
+        print("PHY addr = "+f'{phy_addr:02d}')
         print("Extended register mode: "+ext_dict[ext])
 
-def ExecScriptTi(file):   # file: file handler of the opened file
+def ExecScript(file):   # file: file handler of the opened file
 
     bad_fmt_str = 'Bad file format. '
 
@@ -233,7 +235,7 @@ def ExecScriptTi(file):   # file: file handler of the opened file
                     print("Reading file:" + path )
 
                     other_file = open(path, 'r')
-                    ExecScriptTi(other_file)
+                    ExecScript(other_file)
                     other_file.close()
                 except FileNotFoundError:
                     print("Invalid file or file path...")
@@ -247,13 +249,14 @@ def ExecScriptTi(file):   # file: file handler of the opened file
         return
 
 # ---------- Check arguments ----------
-if(len(sys.argv)==1):
+len_argv = len(sys.argv)
+if(len_argv==1):
     print(help_str)
     quit()
 elif(sys.argv[1] == "--help" or sys.argv[1] == "-h"):
     print(help_str)
     quit()
-elif(len(sys.argv)==2):
+elif(len_argv>=2):
     # ---------- Open COM Port ----------
     com_port = serial.Serial(sys.argv[1], 9600, timeout=1)
 
@@ -265,49 +268,53 @@ elif(len(sys.argv)==2):
         if(not temp_data):
             break
 
-    # ---------- Parse user inputs ----------
-    while(1):
-        usr_data_raw = input("> ")
+    if(len_argv==3):
+        try:
+            path = sys.argv[2]
+            print("Reading file:" + path )
 
-        usr_data = usr_data_raw.split()
-        len_usr_data = len(usr_data)
+            file = open(path, 'r')
+            ExecScript(file)
+            file.close()
+        except FileNotFoundError:
+            print("Invalid file or file path...")
+    elif(len_argv==2):
+        # ---------- Parse user inputs ----------
+        while(1):
+            usr_data_raw = input("> ")
 
-        if(len_usr_data==0):
-            continue
+            usr_data = usr_data_raw.split()
+            len_usr_data = len(usr_data)
 
-        elif(usr_data[0] == "script"):
-            try:
-                path = usr_data[1]
-                print("read file (WIP):" + path )
-            except FileNotFoundError:
-                print("Invalid file or file path...")
+            if(len_usr_data==0):
                 continue
-        elif(usr_data[0] == "script_ti"):
-            try:
-                path = usr_data[1]
-                print("Reading file:" + path )
+            elif(usr_data[0] == "script"):
+                try:
+                    path = usr_data[1]
+                    print("Reading file:" + path )
 
-                file = open(path, 'r')
-                ExecScriptTi(file)
-                file.close()
-            except FileNotFoundError:
-                print("Invalid file or file path...")
-                continue
-        elif(usr_data[0] == "info"):
-            if(board_verbose):
-                print(board_verbose.decode('utf-8'))
+                    file = open(path, 'r')
+                    ExecScript(file)
+                    file.close()
+                except FileNotFoundError:
+                    print("Invalid file or file path...")
+                    continue
+            elif(usr_data[0] == "info"):
+                if(board_verbose):
+                    print(board_verbose.decode('utf-8'))
+                else:
+                    print("Board didn't send any info (verbose)...")
+            elif(usr_data[0] == "config"):
+                Config(usr_data, len_usr_data)
+
+            elif(usr_data[0] in ("exit", "exit()", "quit", "quit()", "q")):
+                com_port.close()
+                quit()
+            elif(usr_data[0] in ("help", "--help", "h", "-h", "?")):
+                print(help_str)
+
+            # ---------- R/W Registers ----------
             else:
-                print("Board didn't send any info (verbose)...")
-        elif(usr_data[0] == "config"):
-            Config(usr_data, len_usr_data)
-
-        elif(usr_data[0] in ("exit", "exit()", "quit", "quit()")):
-            com_port.close()
-            quit()
-        elif(usr_data[0] in ("help", "--help", "h", "-h", "?")):
-            print(help_str)
-
-        # ---------- R/W Registers ----------
-        else:
-            RwRegs(usr_data, len_usr_data)
-            
+                RwRegs(usr_data, len_usr_data)
+    else:
+        print("Too many arguments... try 'help'")
