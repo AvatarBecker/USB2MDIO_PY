@@ -2,7 +2,7 @@
 
 A python alternative to TI's USB2MDIO tool.
 
-TI has this USB2MDIO interface for configuring PHYs via USB on their evaluation boards (using an on-board MSP430 that controls the SMI (MDIO) interface and receives the commands from the PC via USB).
+TI has this USB2MDIO (or USB-2-MDIO) interface for configuring PHYs via USB on their evaluation boards (using an on-board MSP430 that controls the SMI (MDIO) interface and receives the commands from the PC via USB).
 However, the tool is only made available for Windows, and it doesn't offer a good UX.
 Therefore I decided (needed) to write a small tool to substitute it and used the opportunity to expand it.
 
