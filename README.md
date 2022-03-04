@@ -34,10 +34,11 @@ Show board verbose:
 Dump registers with (WIP):
     ```dump <start_reg> <end_reg>```
 
-Execute a script in TIs format with:
-    ```script_ti <path>```
+Execute a script (either in TI's of usb2mdio_py's own format) with:
+    ```script <path>```
 
     Syntax for TI script:
+
     ```
     begin
 
@@ -50,17 +51,25 @@ Execute a script in TIs format with:
     end
     ```
 
-Execute a file in usb2mdio_py format with (lets us batch writes to many PHYs) (WIP):
-    ```script <path>```
-
     Syntax for usb2mdio_py script:
+
     ```
-    01   // this is a comment, choose to PHY 01
-    /my_path/ti_script_1.txt
-    /my_path/ti_script_2.txt
-    
-    02   // choose to PHY 01
-    /my_path/ti_script_3.txt
+    begin
+
+    config ext yes
+    config phy 01
+    2       // PHYIDR 1
+    3       // PHYIDR 2
+
+    script ./test_scripts/dp83867_init_config.txt    // home directory is where the python script is running...
+
+    config phy 10
+    2       // PHYIDR 1
+    3       // PHYIDR 2
+
+    script ./test_scripts/tc812_init_config.txt    // home directory is where the python script is running...
+
+    end
     ```
 
 TI UART Protocol:

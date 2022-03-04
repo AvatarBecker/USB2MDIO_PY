@@ -1,0 +1,16 @@
+begin
+
+config ext yes
+config phy 01
+2       // PHYIDR 1
+3       // PHYIDR 2
+
+script ./test_scripts/dp83867_init_config.txt    // home directory is where the python script is running...
+
+config phy 10
+2       // PHYIDR 1
+3       // PHYIDR 2
+
+script ./test_scripts/tc812_init_config.txt    // home directory is where the python script is running...
+
+end

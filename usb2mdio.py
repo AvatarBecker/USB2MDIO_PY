@@ -22,16 +22,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Get arguments from outside:
-#    connect [port] <speed=9600>
-#
-#    After connected:
-#        write <reg> <value>     #formats: 23 or 0x17 or b00010111
-#        write -h <reg> <value>  #format: reg name/name.field; value in above form
-#        read [-h] <reg>
-#        dump [-h]
-#        [-ti] file    # file containing a list of the commands above, same syntax; if -ti, use texas format
-
 # Ideas/TODO:
 # Use files for verbose dump of registers: represent as class/structure like Basic_Control_Reg.Master_!Slave
 #     Maybe we could use the format/code from Unix drivers...?
@@ -74,56 +64,21 @@ Show board verbose:
 Dump registers with (WIP):
     dump <start_reg> <end_reg>
 
-Execute a script in TIs format with:
-    script_ti <path>
-
-    Syntax for TI script:
-    
-    begin
-
-    0000      // comment, read BMCR (Basic Mode Control Register)
-    0001      // read BMSR (Basic Mode Status Register)
-    0002      // read PHYIDR1 (should read 0x2000)
-    0003      // read PHYIDR2 (should read 0xA270)
-    0602 0003 // write 0x0003 to reg 0x0602
-
-    end
-    
-
-Execute a file in usb2mdio_py format with (lets us batch writes to many PHYs) (WIP):
+Execute a script (either in TI's of usb2mdio_py's own format) with:
     script <path>
 
-    Syntax for usb2mdio_py script:
-    
-    01   // this is a comment, choose to PHY 01
-    /my_path/ti_script_1.txt
-    /my_path/ti_script_2.txt
-    
-    02   // choose to PHY 01
-    /my_path/ti_script_3.txt
-    
-
-TI UART Protocol:
-
-In pure ASCII digits:
-    Send:
-    
-        <PP><AAAA>[VVVV]<X><'/'>
-        P: PHY Address digit
-        A: Register Address digit
-        V: Register Value digit
-        X: Extended register:
-            '*': yes
-            '=': no
-        '/': Delimiter char - End of request packet marker
-    
-    Receive:
-    
-        <VVVV><0x0a>
-        V: Register Value digit
-        0x0a: Delimiter char - End of reply packet
-    
+For more information check https://github.com/AvatarBecker/USB2MDIO_PY
 """
+
+# ---------- Function definitions ----------
+
+# TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
+phy_addr = 0x01
+ext = '*'  # extended registers. Yes: '*', No: '='
+ext_dict = {
+    '*': 'yes',
+    '=': 'no'
+}
 
 # ---------- Function definitions ----------
 
@@ -166,7 +121,7 @@ def WriteReg(com_port, phy_addr, addr, value, ext):
     com_port.write(pkt_request)
 
     # read back value and print it
-    print("wr reg 0x", f'{addr:04x}', ": ", end='')
+    print("wr reg 0x", f'{addr:04x}', ": ",  sep='', end='')
     ReadBackReg(addr)
 
 def ReadReg(com_port, phy_addr, addr, ext):
@@ -183,7 +138,7 @@ def ReadReg(com_port, phy_addr, addr, ext):
     # write it
     com_port.write(pkt_request)
 
-    print("rd reg 0x", f'{addr:04x}', ": ", end='')
+    print("rd reg 0x", f'{addr:04x}', ": ", sep='', end='')
     ReadBackReg(addr)
 
 def ReadCleanLine(file):
@@ -215,6 +170,34 @@ def RwRegs(cmd, len_cmd):
     else:
         print('Wrong number of args...')
 
+def Config(usr_data, len_usr_data):
+
+    global phy_addr
+    global ext
+    global ext_dict
+
+    if(len_usr_data == 3):
+        if(usr_data[1] == "phy"):
+            try:
+                phy_addr = int(usr_data[2], 16)
+                print("PHY addr = 0x"+f'{phy_addr:02x}')
+            except ValueError:
+                print("Invalid PHY address...")
+                return
+        elif(usr_data[1] == "ext"):
+            try:
+                if(usr_data[2] in ('yes', 'y', 'YES', 'Y')):
+                    ext = '*'
+                elif(usr_data[2] in ('no', 'n', 'NO', 'n')):
+                    ext = '='
+                print("Extended register mode: "+ext_dict[ext])
+            except ValueError:
+                print("Invalid Ext mode...")
+                return
+    else:
+        print("MDIO PHY addr = 0x"+f'{phy_addr:02x}')
+        print("Extended register mode: "+ext_dict[ext])
+
 def ExecScriptTi(file):   # file: file handler of the opened file
 
     bad_fmt_str = 'Bad file format. '
@@ -239,62 +222,29 @@ def ExecScriptTi(file):   # file: file handler of the opened file
 
         for cmd in cmds:
             cmd = cmd.split()
-            len_cmd = len(usr_data)
-            RwRegs(cmd, len_cmd)
+            len_cmd = len(cmd)
+
+            if(cmd[0] == "config"):
+                Config(cmd, len_cmd)
+
+            elif(cmd[0] == "script"):
+                try:
+                    path = cmd[1]
+                    print("Reading file:" + path )
+
+                    other_file = open(path, 'r')
+                    ExecScriptTi(other_file)
+                    other_file.close()
+                except FileNotFoundError:
+                    print("Invalid file or file path...")
+                    return
+            else:
+                RwRegs(cmd, len_cmd)
 
     else:
         # Wrong format, abort
         print(bad_fmt_str)
         return
-
-def ExecScriptTiNope(file):   # file: file handler of the opened file
-
-    bad_fmt_str = 'Bad file format. '
-
-    cmd=ReadCleanLine(file)
-    curr_line = 1
-
-    while(GetFirstString(cmd) != 'begin'):
-
-        if(not line):
-            print(bad_fmt_str+"No 'begin' keyword...")
-            return
-        #print(line)
-
-        cmd=ReadCleanLine(file)
-        curr_line += 1
-
-    cmd=ReadCleanLine(file)
-    curr_line += 1
-
-    while(GetFirstString(cmd) != 'end'):
-
-        # Get ADDR
-        try:
-            addr = int(GetFirstString(cmd), 16)
-        except ValueError:
-            # empty line
-            continue
-
-        len_cmd = len(cmd)
-
-        # Get VALUE (if any)
-        if(len_cmd == 2):
-            try:
-                value = int(usr_data[1], 16)
-                WriteReg(com_port, phy_addr, addr, value, ext)
-            except ValueError:
-                print("Invalid write value at line "+curr_line)
-                continue
-        elif(len_cmd == 1):
-            ReadReg(com_port, phy_addr, addr, ext)
-        else:
-            print('Wrong number of args at line '+curr_line)
-
-        cmd=ReadCleanLine(file)
-        curr_line += 1
-
-    return
 
 # ---------- Check arguments ----------
 if(len(sys.argv)==1):
@@ -315,14 +265,6 @@ elif(len(sys.argv)==2):
         if(not temp_data):
             break
 
-    # TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
-    phy_addr = 0x01
-    ext = '*'  # extended registers. Yes: '*', No: '='
-    ext_dict = {
-        '*': 'yes',
-        '=': 'no'
-    }
-
     # ---------- Parse user inputs ----------
     while(1):
         usr_data_raw = input("> ")
@@ -337,54 +279,27 @@ elif(len(sys.argv)==2):
             try:
                 path = usr_data[1]
                 print("read file (WIP):" + path )
-            except IndexError:
+            except FileNotFoundError:
                 print("Invalid file or file path...")
                 continue
         elif(usr_data[0] == "script_ti"):
-            path = usr_data[1]
-            print("Reading file:" + path )
+            try:
+                path = usr_data[1]
+                print("Reading file:" + path )
 
-            file = open(path, 'r')
-            ExecScriptTi(file)
-            file.close()
-
-            # try:
-            #     path = usr_data[1]
-            #     print("read file " + path + "(WIP)")
-
-            #     file = open(path, 'r')
-            #     ExecScriptTi(file)
-            #     file.close()
-            # except IndexError:
-            #     print("Invalid file or file path...")
-            #     continue
+                file = open(path, 'r')
+                ExecScriptTi(file)
+                file.close()
+            except FileNotFoundError:
+                print("Invalid file or file path...")
+                continue
         elif(usr_data[0] == "info"):
             if(board_verbose):
                 print(board_verbose.decode('utf-8'))
             else:
                 print("Board didn't send any info (verbose)...")
         elif(usr_data[0] == "config"):
-            if(len_usr_data == 3):
-                if(usr_data[1] == "phy"):
-                    try:
-                        phy_addr = int(usr_data[2], 16)
-                        print("MDIO PHY addr = 0x"+f'{phy_addr:02x}')
-                    except ValueError:
-                        print("Invalid PHY address...")
-                        continue
-                elif(usr_data[1] == "ext"):
-                    try:
-                        if(usr_data[2] in ('yes', 'y', 'YES', 'Y')):
-                            ext = '*'
-                        elif(usr_data[2] in ('no', 'n', 'NO', 'n')):
-                            ext = '='
-                        print("Extended register mode: "+ext_dict[ext])
-                    except ValueError:
-                        print("Invalid Ext mode...")
-                        continue
-            else:
-                print("MDIO PHY addr = 0x"+f'{phy_addr:02x}')
-                print("Extended register mode: "+ext_dict[ext])
+            Config(usr_data, len_usr_data)
 
         elif(usr_data[0] in ("exit", "exit()", "quit", "quit()")):
             com_port.close()

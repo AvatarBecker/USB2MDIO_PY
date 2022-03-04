@@ -1,0 +1,6 @@
+begin
+
+0602 0003 // write 0x0003 to reg 0x0602
+0450 2632 // LED_1 blink on RX activity, LED_2 blink on TX activity
+
+end
