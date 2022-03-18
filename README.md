@@ -13,7 +13,7 @@ A script can be passed directly to the command via bash, or via the commands CLI
 
 `python3 usb2mdio.py <com_port> [script_file]`
 
-'script_file' can be in TI's format of USB2MDIO_PY's extended format.
+'script_file' can be in TI's format or USB2MDIO_PY's extended format.
 Check out the syntax below.
 
 If no script is passed, a CLI opens, where the following commands are possible:
