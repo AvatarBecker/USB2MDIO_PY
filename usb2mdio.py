@@ -95,8 +95,12 @@ def PrintRaw(str):
     print()
 
 def ReadBackReg(addr):
-    pkt_reply = com_port.read(5)  # 4 value chars + 0x0a as delimiter character
+    pkt_reply = com_port.read(10)  # 4 value chars + 0x0a as delimiter character
     #PrintRaw(pkt_reply.decode('utf-8'))
+
+    pkt_reply = [i for i in pkt_reply if i != 0xd]   # for whatever reason, MSP sends a carriage return within reply for addr 0x1
+    pkt_reply = bytes(pkt_reply)
+
     if(pkt_reply[4] == 0x0a):
         data_str = pkt_reply[0:4].decode('utf-8')
         if(data_str):
