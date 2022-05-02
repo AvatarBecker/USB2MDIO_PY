@@ -26,6 +26,7 @@
 import sys
 import serial
 import re
+import time
 
 
 help_str = """
@@ -73,7 +74,7 @@ For more documentation check https://github.com/AvatarBecker/USB2MDIO_PY
 # ---------- Function definitions ----------
 
 # TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
-phy_addr = 1   # this is a decimal value
+phy_addr = 10   # this is a decimal value
 ext = '*'  # extended registers. Yes: '*', No: '='
 ext_dict = {
     '*': 'yes',
@@ -95,7 +96,7 @@ def PrintRaw(str):
     print()
 
 def ReadBackReg(addr):
-    pkt_reply = com_port.read(10)  # 4 value chars + 0x0a as delimiter character
+    pkt_reply = com_port.read(6)
     #PrintRaw(pkt_reply.decode('utf-8'))
 
     pkt_reply = [i for i in pkt_reply if i != 0xd]   # for whatever reason, MSP sends a carriage return within reply for addr 0x1
@@ -158,8 +159,10 @@ def ReadCleanLine(file):
 def RwRegs(cmd, len_cmd):
     # Get ADDR
     try:
+        # print(cmd[0])
+        # print(type(cmd[0]))
         addr = int(cmd[0], 16)
-    except ValueError:
+    except:
         print("Invalid command...")
         return
 
@@ -175,6 +178,27 @@ def RwRegs(cmd, len_cmd):
         ReadReg(com_port, phy_addr, addr, ext)
     else:
         print('Wrong number of args...')
+
+def DumpRegs(cmd, len_cmd):
+    # Get ADDRs
+    if(len_usr_data == 1):
+        addr_start = 0x00
+        addr_end = 0x0f
+    elif(len_usr_data >= 2):
+        try:
+            addr_start = int(cmd[1], 16)
+        except:
+            print("Bad argument...")
+            return
+    
+        try:
+            addr_end = int(cmd[2], 16)
+        except:
+            print("Bad argument...")
+            return
+
+    for my_addr in range(addr_start, addr_end+1):
+        ReadReg(com_port, phy_addr, my_addr, ext)
 
 def Config(usr_data, len_usr_data):
 
@@ -244,6 +268,8 @@ def ExecScript(file):   # file: file handler of the opened file
                 except FileNotFoundError:
                     print("Invalid file or file path...")
                     return
+            elif(cmd[0] == "dump"):
+                DumpRegs(cmd, len_cmd)
             else:
                 RwRegs(cmd, len_cmd)
 
@@ -262,7 +288,7 @@ elif(sys.argv[1] == "--help" or sys.argv[1] == "-h"):
     quit()
 elif(len_argv>=2):
     # ---------- Open COM Port ----------
-    com_port = serial.Serial(sys.argv[1], 9600, timeout=1)
+    com_port = serial.Serial(sys.argv[1], 9600, timeout=.1)
 
     # ---------- Read board verbose ----------
     board_verbose = bytearray(b'')
@@ -310,7 +336,8 @@ elif(len_argv>=2):
                     print("Board didn't send any info (verbose)...")
             elif(usr_data[0] == "config"):
                 Config(usr_data, len_usr_data)
-
+            elif(usr_data[0] == "dump"):
+                DumpRegs(usr_data, len_usr_data)
             elif(usr_data[0] in ("exit", "exit()", "quit", "quit()", "q")):
                 com_port.close()
                 quit()
