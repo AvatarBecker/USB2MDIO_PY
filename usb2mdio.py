@@ -45,7 +45,9 @@ Configure PHY access:
     PHY address chosen with:
         config phy <phy_address>
     Extended register mode chosen with:
-        config ext <yes/no, y/n, Y/N, YES/NO>
+        config ext <yes/no, y/n, Y/N, YES/NO, true/false, True/False>
+    Pretty print:
+        config pretty <yes/no, y/n, Y/N, YES/NO, true/false, True/False>
 
 Write register:
     <reg> <value>   #Only HEX values without '0x' for now, e.g. ff
@@ -56,8 +58,8 @@ Read register with:
 Show board verbose:
     info
 
-Dump registers with (WIP):
-    dump <start_reg> <end_reg>
+Dump registers with:
+    dump [<start_reg> <end_reg>]
 
 Execute a script (either in TI's of usb2mdio_py's own format) with:
     script <path>
@@ -74,6 +76,7 @@ For more documentation check https://github.com/AvatarBecker/USB2MDIO_PY
 # ---------- Function definitions ----------
 
 # TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
+pretty_print = True
 phy_addr = 10   # this is a decimal value
 ext = '*'  # extended registers. Yes: '*', No: '='
 ext_dict = {
@@ -180,6 +183,9 @@ def RwRegs(cmd, len_cmd):
         print('Wrong number of args...')
 
 def DumpRegs(cmd, len_cmd):
+
+    global pretty_print
+
     # Get ADDRs
     if(len_usr_data == 1):
         addr_start = 0x00
@@ -197,11 +203,20 @@ def DumpRegs(cmd, len_cmd):
             print("Bad argument...")
             return
 
-    for my_addr in range(addr_start, addr_end+1):
-        ReadReg(com_port, phy_addr, my_addr, ext)
+    if(pretty_print):
+        for my_addr in range(addr_start, addr_end+1):
+            # read PHY IDs
+            # check if there is a corresponding file
+            # pretty print
+            ReadReg(com_port, phy_addr, my_addr, ext)
+    else:
+        for my_addr in range(addr_start, addr_end+1):
+            ReadReg(com_port, phy_addr, my_addr, ext)
+
 
 def Config(usr_data, len_usr_data):
 
+    global pretty_print
     global phy_addr
     global ext
     global ext_dict
@@ -216,17 +231,29 @@ def Config(usr_data, len_usr_data):
                 return
         elif(usr_data[1] == "ext"):
             try:
-                if(usr_data[2] in ('yes', 'y', 'YES', 'Y')):
+                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True')):
                     ext = '*'
-                elif(usr_data[2] in ('no', 'n', 'NO', 'n')):
+                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False')):
                     ext = '='
                 print("Extended register mode: "+ext_dict[ext])
             except ValueError:
                 print("Invalid Ext mode...")
                 return
+        elif(usr_data[1] == "pretty"):
+            try:
+                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True')):
+                    pretty_print = True
+                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False')):
+                    pretty_print = False
+                print("Pretty print: "+f'{pretty_print}')
+            except ValueError:
+                print("Unknown option...")
+                return
+
     else:
         print("PHY addr = "+f'{phy_addr:02d}')
         print("Extended register mode: "+ext_dict[ext])
+        print("Pretty print: "+f'{pretty_print}')
 
 def ExecScript(file):   # file: file handler of the opened file
 
