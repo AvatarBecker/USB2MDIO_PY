@@ -28,6 +28,9 @@ import serial
 import re
 import time
 
+# mine:
+import csv2regs as cr
+
 
 help_str = """
 Usage: python3 usb2mdio.py <com_port> [script_file]
@@ -45,9 +48,9 @@ Configure PHY access:
     PHY address chosen with:
         config phy <phy_address>
     Extended register mode chosen with:
-        config ext <yes/no, y/n, Y/N, YES/NO, true/false, True/False>
+        config ext <yes/no, y/n, Y/N, YES/NO, true/false, True/False, 1/0>
     Pretty print:
-        config pretty <yes/no, y/n, Y/N, YES/NO, true/false, True/False>
+        config pretty <yes/no, y/n, Y/N, YES/NO, true/false, True/False, 1/0>
 
 Write register:
     <reg> <value>   #Only HEX values without '0x' for now, e.g. ff
@@ -64,6 +67,20 @@ Dump registers with:
 Execute a script (either in TI's of usb2mdio_py's own format) with:
     script <path>
 
+Read register structure from a .csv and assign it to the current PHY address:
+    regs <path>
+
+    The format must be like the following:
+
+    # this is a comment
+    # address; acronym; name; mask; shift; width; permission
+    0x0;BMCR;Basic Mode Control Register;;;;
+    ;;MII_reset ;0x8000;15;1;
+    ;;xMII Loopback ;0x4000;14;1;
+    0x1;BMSR;Basic Mode Status Register;;;;
+    ;;100Base-T4 ;0x8000;15;1;
+    ;;100Base-X Full Duplex ;0x4000;14;1;
+
 Help:
     <help, --help, h, -h, ?>
 
@@ -76,8 +93,10 @@ For more documentation check https://github.com/AvatarBecker/USB2MDIO_PY
 # ---------- Function definitions ----------
 
 # TODO: make it a config class, with description, name, and value. Easens pretty print and feedback on change.
-pretty_print = True
+pretty_print = False
 phy_addr = 10   # this is a decimal value
+regs_dict = {}  # index reg struct with phy_addr
+
 ext = '*'  # extended registers. Yes: '*', No: '='
 ext_dict = {
     '*': 'yes',
@@ -106,11 +125,23 @@ def ReadBackReg(addr):
     pkt_reply = bytes(pkt_reply)
 
     if(pkt_reply[4] == 0x0a):
+        
         data_str = pkt_reply[0:4].decode('utf-8')
+        
         if(data_str):
-            print('0x', data_str, sep='')
-            #PrintRaw(data_str)
-            #data = int(pkt_reply[0:4], 16)
+            
+            if(pretty_print):
+                
+                if(phy_addr in regs_dict.keys()):
+                    value = int(data_str, 16)
+                    cr.PrintRegPretty(regs_dict[phy_addr], addr, value)
+                else:
+                    str_temp = f"Pretty print is on and no register structure was given for PHY Address {phy_addr}...\n\rYou can disable pretty print with:\n\rconfig pretty no"
+                    print(str_temp)
+            else:
+                print('0x', data_str, sep='')
+                #PrintRaw(data_str)
+                #data = int(pkt_reply[0:4], 16)
         else:
             print("No reply...")
     else:
@@ -147,7 +178,8 @@ def ReadReg(com_port, phy_addr, addr, ext):
     # write it
     com_port.write(pkt_request)
 
-    print("rd reg 0x", f'{addr:04x}', ": ", sep='', end='')
+    if(not pretty_print):
+        print("rd reg 0x", f'{addr:04x}', ": ", sep='', end='')
     ReadBackReg(addr)
 
 # Unused. I'll leave it here just for future reference of a neat solution
@@ -160,6 +192,7 @@ def ReadCleanLine(file):
     return cmd
 
 def RwRegs(cmd, len_cmd):
+
     # Get ADDR
     try:
         # print(cmd[0])
@@ -184,13 +217,11 @@ def RwRegs(cmd, len_cmd):
 
 def DumpRegs(cmd, len_cmd):
 
-    global pretty_print
-
     # Get ADDRs
-    if(len_usr_data == 1):
+    if(len_cmd == 1):
         addr_start = 0x00
-        addr_end = 0x0f
-    elif(len_usr_data >= 2):
+        addr_end = 0x1f
+    elif(len_cmd >= 2):
         try:
             addr_start = int(cmd[1], 16)
         except:
@@ -203,15 +234,8 @@ def DumpRegs(cmd, len_cmd):
             print("Bad argument...")
             return
 
-    if(pretty_print):
-        for my_addr in range(addr_start, addr_end+1):
-            # read PHY IDs
-            # check if there is a corresponding file
-            # pretty print
-            ReadReg(com_port, phy_addr, my_addr, ext)
-    else:
-        for my_addr in range(addr_start, addr_end+1):
-            ReadReg(com_port, phy_addr, my_addr, ext)
+    for my_addr in range(addr_start, addr_end+1):
+        ReadReg(com_port, phy_addr, my_addr, ext)
 
 
 def Config(usr_data, len_usr_data):
@@ -231,9 +255,9 @@ def Config(usr_data, len_usr_data):
                 return
         elif(usr_data[1] == "ext"):
             try:
-                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True')):
+                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True', '1')):
                     ext = '*'
-                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False')):
+                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False', '0')):
                     ext = '='
                 print("Extended register mode: "+ext_dict[ext])
             except ValueError:
@@ -241,9 +265,9 @@ def Config(usr_data, len_usr_data):
                 return
         elif(usr_data[1] == "pretty"):
             try:
-                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True')):
+                if(usr_data[2] in ('yes', 'y', 'YES', 'Y', 'true', 'True', '1')):
                     pretty_print = True
-                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False')):
+                elif(usr_data[2] in ('no', 'n', 'NO', 'n', 'false', 'False', '0')):
                     pretty_print = False
                 print("Pretty print: "+f'{pretty_print}')
             except ValueError:
@@ -254,6 +278,56 @@ def Config(usr_data, len_usr_data):
         print("PHY addr = "+f'{phy_addr:02d}')
         print("Extended register mode: "+ext_dict[ext])
         print("Pretty print: "+f'{pretty_print}')
+
+def CmdDecision(cmd):
+    len_cmd = len(cmd)
+
+    if(cmd[0] == "script"):
+        try:
+            path = cmd[1]
+            print("Reading file:" + path )
+
+            file = open(path, 'r')
+            ExecScript(file)
+            file.close()
+        except FileNotFoundError:
+            print("Invalid file or file path...")
+            return
+    elif(cmd[0] == "regs"):
+        try:
+            path = cmd[1]
+            print("Reading file:" + path )
+
+            regs = cr.csv2regs(path)
+
+            regs_dict[phy_addr] = regs
+        except IndexError:
+            if(phy_addr in regs_dict.keys()):
+                cr.PrintRegs(regs_dict[phy_addr])
+            else:
+                str_temp = f"No register structure was given for PHY Address {phy_addr}..."
+                print(str_temp)
+        except FileNotFoundError:
+            print("Invalid file or file path...")
+            return
+    elif(cmd[0] == "info"):
+        if(board_verbose):
+            print(board_verbose.decode('utf-8'))
+        else:
+            print("Board didn't send any info (verbose)...")
+    elif(cmd[0] == "config"):
+        Config(cmd, len_cmd)
+    elif(cmd[0] == "dump"):
+        DumpRegs(cmd, len_cmd)
+    elif(cmd[0] in ("exit", "exit()", "quit", "quit()", "q")):
+        com_port.close()
+        quit()
+    elif(cmd[0] in ("help", "--help", "h", "-h", "?")):
+        print(help_str)
+
+    # ---------- R/W Registers ----------
+    else:
+        RwRegs(cmd, len_cmd)
 
 def ExecScript(file):   # file: file handler of the opened file
 
@@ -279,26 +353,8 @@ def ExecScript(file):   # file: file handler of the opened file
 
         for cmd in cmds:
             cmd = cmd.split()
-            len_cmd = len(cmd)
 
-            if(cmd[0] == "config"):
-                Config(cmd, len_cmd)
-
-            elif(cmd[0] == "script"):
-                try:
-                    path = cmd[1]
-                    print("Reading file:" + path )
-
-                    other_file = open(path, 'r')
-                    ExecScript(other_file)
-                    other_file.close()
-                except FileNotFoundError:
-                    print("Invalid file or file path...")
-                    return
-            elif(cmd[0] == "dump"):
-                DumpRegs(cmd, len_cmd)
-            else:
-                RwRegs(cmd, len_cmd)
+            CmdDecision(cmd)
 
     else:
         # Wrong format, abort
@@ -345,34 +401,7 @@ elif(len_argv>=2):
 
             if(len_usr_data==0):
                 continue
-            elif(usr_data[0] == "script"):
-                try:
-                    path = usr_data[1]
-                    print("Reading file:" + path )
-
-                    file = open(path, 'r')
-                    ExecScript(file)
-                    file.close()
-                except FileNotFoundError:
-                    print("Invalid file or file path...")
-                    continue
-            elif(usr_data[0] == "info"):
-                if(board_verbose):
-                    print(board_verbose.decode('utf-8'))
-                else:
-                    print("Board didn't send any info (verbose)...")
-            elif(usr_data[0] == "config"):
-                Config(usr_data, len_usr_data)
-            elif(usr_data[0] == "dump"):
-                DumpRegs(usr_data, len_usr_data)
-            elif(usr_data[0] in ("exit", "exit()", "quit", "quit()", "q")):
-                com_port.close()
-                quit()
-            elif(usr_data[0] in ("help", "--help", "h", "-h", "?")):
-                print(help_str)
-
-            # ---------- R/W Registers ----------
             else:
-                RwRegs(usr_data, len_usr_data)
+                CmdDecision(usr_data)
     else:
         print("Too many arguments... try 'help'")
