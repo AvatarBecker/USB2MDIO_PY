@@ -19,9 +19,9 @@ Take a .csv of the registers of a PHY in the following format:
 ;;PHY_ID;0xFFFF;0;16;
 ...
 
-Ouputs register structure in the format:
+Ouputs the register structure in the Python list format:
 
-# list register objects (tReg)
+# list of register objects (tReg)
 regs =
 [
     [

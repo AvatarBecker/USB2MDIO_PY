@@ -97,8 +97,21 @@ end
 #### (Pretty print) import a register structure to work with:
 `regs <path>`
 
-Reads in a reg structure from a .csv file and uses it to print the reg values in human readable form.
-For the .csv format and output example, check the comments in csv2regs.py.
+Reads in a register structure from a .csv file and uses it to print the reg values in human readable form.
+
+The required .csv format is the following (also check the comments in csv2regs.py).
+```
+# address; acronym; name; mask; shift; width;
+0;BCR;Basic control register;;;;
+;;RESET;0x8000;15;1;
+;;LOOPBACK;0x4000;14;1;
+...
+2;PHYIDR1;PHY identifier register 1;;;;
+;;PHY_ID;0xFFFF;0;16;
+...
+```
+
+This feature uses the tool csv2regs.py, which reads in the .csv and outputs a Python list of tReg objects (used internally by usb2mdio.py).
 
 #### Configure with
 
@@ -123,8 +136,31 @@ V: Register Value digit
 ```
 
 #### regs_csv2c:
-This tool takes the same register structure and creates a C-struct initialization for a .c source file.
-Check the comments in regs_csv2c.py for the struct definition in a .h header file.
+This tool takes the same register structure as used for the pretty pring and creates a C-struct initialization for a .c source file.
+The struct definition that must go in a .h header file should be the following (also check the comments in regs_csv2c.py):
+
+```
+// file.h
+#define USE_VERBOSE
+
+typedef struct
+{
+    char     *name;
+    uint16_t  mask;
+    uint8_t   shift;
+    uint8_t   width;
+}tRegField;
+
+typedef struct
+{
+    uint16_t  addr;
+    char      *acr;
+    char      *name;
+    tRegField fields[17];
+}tReg;
+
+extern tReg phy_regs[/*address*/];
+```
 
 <!---
 Ideas/TODO:
