@@ -113,8 +113,6 @@ The required .csv format is the following (also check the comments in csv2regs.p
 
 This feature uses the tool csv2regs.py, which reads in the .csv and outputs a Python list of tReg objects (used internally by usb2mdio.py).
 
-#### Configure with
-
 #### TI UART Protocol:
 In pure ASCII digits:\
 Send:
