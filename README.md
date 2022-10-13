@@ -30,6 +30,9 @@ PHY address chosen with:\
 Extended register mode chosen with:\
 `config ext <yes/no, y/n, Y/N, YES/NO>`
 
+Pretty print ON/OFF with:\
+`config pretty <yes/no, y/n, Y/N, YES/NO>`
+
 #### Write register:
 `<reg> <value>   #Only HEX values without '0x' for now, e.g. ff`
 
@@ -91,6 +94,14 @@ script ./test_scripts/tc812_init_config.txt
 end
 ```
 
+#### (Pretty print) import a register structure to work with:
+`regs <path>`
+
+Reads in a reg structure from a .csv file and uses it to print the reg values in human readable form.
+For the .csv format and output example, check the comments in csv2regs.py.
+
+#### Configure with
+
 #### TI UART Protocol:
 In pure ASCII digits:\
 Send:
@@ -110,6 +121,10 @@ Receive:
 V: Register Value digit
 0x0a: Delimiter char - End of reply packet
 ```
+
+#### regs_csv2c:
+This tool takes the same register structure and creates a C-struct initialization for a .c source file.
+Check the comments in regs_csv2c.py for the struct definition in a .h header file.
 
 <!---
 Ideas/TODO:
