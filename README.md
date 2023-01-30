@@ -1,3 +1,5 @@
+*I can no longer develop or test this tool. feel free to fork it if you need a new feature. I could still answer questions or upload files I forgot though.*
+
 ## USB2MDIO_PY
 
 A python alternative to TI's USB2MDIO tool.
